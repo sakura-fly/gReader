@@ -2,6 +2,9 @@ name: Release Build
 
 on: push
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
