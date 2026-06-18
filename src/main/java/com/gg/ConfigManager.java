@@ -186,19 +186,15 @@ public class ConfigManager {
         return PREFS.get("theme", "默认");
     }
 
-    /** 设置主题并同步更新字体颜色配置 */
+    /** 设置主题，仅修改主题相关的颜色，不覆盖用户字体字号设置 */
     public void applyTheme(String name) {
         PREFS.put("theme", name);
         switch (name) {
             case "IDEA Dark" -> {
-                setFontFamily("SansSerif");
-                setFontSize(16);
                 setTextColor(new Color(0x808080));   // 注释灰
                 setBackgroundColor(new Color(0x2B2B2B));
             }
             default -> {
-                setFontFamily("SansSerif");
-                setFontSize(16);
                 setTextColor(Color.BLACK);
                 setBackgroundColor(Color.WHITE);
             }

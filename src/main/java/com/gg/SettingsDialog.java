@@ -94,8 +94,6 @@ public class SettingsDialog extends JDialog {
         themeCombo.addActionListener(e -> {
             String theme = (String) themeCombo.getSelectedItem();
             config.applyTheme(theme);
-            fontFamilyCombo.setSelectedItem(config.getFontFamily());
-            fontSizeSpinner.setValue(config.getFontSize());
             selectedTextColor = config.getTextColor(); textColorBtn.repaint();
             selectedBgColor = config.getBackgroundColor(); bgColorBtn.repaint();
         });
