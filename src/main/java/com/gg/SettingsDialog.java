@@ -23,6 +23,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
+import javax.swing.JTextField;
 import javax.swing.JTextArea;
 import javax.swing.SpinnerNumberModel;
 
@@ -41,6 +42,7 @@ import javax.swing.SpinnerNumberModel;
 public class SettingsDialog extends JDialog {
     private final ConfigManager config;
     private final TextPage textPage;
+    private final Runnable onApplied;
 
     private JComboBox<String> fontFamilyCombo;
     private JSpinner fontSizeSpinner;
@@ -49,11 +51,13 @@ public class SettingsDialog extends JDialog {
     private JButton textColorBtn;
     private JButton bgColorBtn;
     private JTextArea regexArea;
+    private java.util.Map<String, JTextField> keyFields;
 
-    public SettingsDialog(JFrame parent, ConfigManager config, TextPage textPage) {
+    public SettingsDialog(JFrame parent, ConfigManager config, TextPage textPage, Runnable onApplied) {
         super(parent, "设置", true);
         this.config = config;
         this.textPage = textPage;
+        this.onApplied = onApplied;
         this.selectedTextColor = config.getTextColor();
         this.selectedBgColor = config.getBackgroundColor();
 
@@ -142,7 +146,43 @@ public class SettingsDialog extends JDialog {
         gbc.fill = GridBagConstraints.BOTH;
         panel.add(regexScroll, gbc);
 
+        // 快捷键设置
+        gbc.gridy = 6;
+        gbc.gridwidth = 2;
+        gbc.weighty = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        JPanel keyPanel = new JPanel(new GridBagLayout());
+        keyPanel.setBorder(BorderFactory.createTitledBorder("快捷键（逗号分隔多个，留空恢复默认）"));
+        GridBagConstraints kg = new GridBagConstraints();
+        kg.insets = new Insets(2, 4, 2, 4);
+        kg.fill = GridBagConstraints.HORIZONTAL;
+
+        String[][] keyDefs = {
+            {"nextPage", "下一页", "j, PAGE_DOWN, RIGHT, DOWN, SPACE"},
+            {"prevPage", "上一页", "k, PAGE_UP, LEFT, UP"},
+            {"nextChapter", "下一章", "control J, control PAGE_DOWN, control DOWN"},
+            {"prevChapter", "上一章", "control K, control PAGE_UP, control UP"},
+            {"toggleToc", "目录", "c"},
+            {"toggleBorder", "边框", "o"},
+            {"increaseOpacity", "增加透明度", "control EQUALS, control PLUS"},
+            {"decreaseOpacity", "减少透明度", "control MINUS"},
+        };
+        keyFields = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < keyDefs.length; i++) {
+            kg.gridx = 0; kg.gridy = i; kg.weightx = 0;
+            keyPanel.add(new JLabel(keyDefs[i][1] + "："), kg);
+            kg.gridx = 1; kg.weightx = 1;
+            JTextField tf = new JTextField(config.getKeyBinding(keyDefs[i][0], keyDefs[i][2]), 20);
+            keyPanel.add(tf, kg);
+            keyFields.put(keyDefs[i][0], tf);
+        }
+        panel.add(keyPanel, gbc);
+
         // 底部按钮：确定 / 应用 / 取消
+        gbc.gridy = 7;
+        gbc.gridwidth = 2;
+        gbc.weighty = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton okBtn = new JButton("确定");
         JButton applyBtn = new JButton("应用");
@@ -151,6 +191,8 @@ public class SettingsDialog extends JDialog {
         okBtn.addActionListener(e -> {
             applySettings();
             dispose();
+            //textPage.recalculatePages();
+            //textPage.repaint();
         });
         applyBtn.addActionListener(e -> applySettings());
         cancelBtn.addActionListener(e -> dispose());
@@ -159,10 +201,6 @@ public class SettingsDialog extends JDialog {
         buttonPanel.add(applyBtn);
         buttonPanel.add(cancelBtn);
 
-        gbc.gridy = 6;
-        gbc.gridwidth = 2;
-        gbc.weighty = 0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
         panel.add(buttonPanel, gbc);
 
         add(panel);
@@ -190,13 +228,22 @@ public class SettingsDialog extends JDialog {
         config.setFontSize((Integer) fontSizeSpinner.getValue());
         config.setTextColor(selectedTextColor);
         config.setBackgroundColor(selectedBgColor);
-        config.setCustomRegexes(
-                Arrays.asList(regexArea.getText().split("\n")));
+        config.setCustomRegexes(Arrays.asList(regexArea.getText().split("\n")));
+
+        // 保存快捷键
+        for (var entry : keyFields.entrySet()) {
+            config.setKeyBinding(entry.getKey(), entry.getValue().getText().trim());
+        }
 
         Font newFont = new Font(config.getFontFamily(), Font.PLAIN, config.getFontSize());
+        int savedChar = textPage.getCurrentPageStartChar();  // 保存当前位置
         textPage.setReaderFont(newFont);
+        textPage.repositionAtChar(savedChar);               // 显式恢复
+        textPage.cancelResizeTimer();
         textPage.setTextColor(selectedTextColor);
         textPage.setBackgroundColor(selectedBgColor);
+
+        if (onApplied != null) onApplied.run();
     }
 
     /** 自定义颜色选择按钮：绘制色块表示当前颜色 */

@@ -180,6 +180,17 @@ public class ConfigManager {
         PREFS.putDouble(KEY_OPACITY, Math.max(0.1f, Math.min(1.0f, v)));
     }
 
+    // ==================== 快捷键 ====================
+
+    /** 获取某动作的快捷键字符串，逗号分隔，如 "j, PAGE_DOWN" */
+    public String getKeyBinding(String action, String defaultKeys) {
+        return PREFS.get("key." + action, defaultKeys);
+    }
+
+    public void setKeyBinding(String action, String keys) {
+        PREFS.put("key." + action, keys);
+    }
+
     /** 强制将所有配置写入磁盘，防止 JVM 退出时数据丢失 */
     public void flush() {
         try {

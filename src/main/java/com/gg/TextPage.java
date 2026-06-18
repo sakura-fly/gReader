@@ -88,10 +88,32 @@ public class TextPage extends JPanel {
     }
 
     public void goToPage(int page) {
-        if (page >= 0 && page < totalPages) {
-            currentPage = page;
-            repaint();
+        if (totalPages == 0) return;
+        currentPage = Math.max(0, Math.min(page, totalPages - 1));
+        repaint();
+    }
+
+    /** 当前页首行对应的原始行号 */
+    public int getCurrentOriginalLine() {
+        if (pageStarts.isEmpty()) return 0;
+        int pos = pageStarts.get(currentPage);
+        for (int i = lineStartChars.size() - 1; i >= 0; i--) {
+            if (lineStartChars.get(i) <= pos) return i;
         }
+        return 0;
+    }
+
+    /** 当前页起始字符偏移量 */
+    public int getCurrentPageStartChar() {
+        if (pageStarts.isEmpty() || currentPage >= pageStarts.size()) return 0;
+        return pageStarts.get(currentPage);
+    }
+
+    /** 以指定字符偏移量为锚点重新分页并重绘 */
+    public void repositionAtChar(int charOffset) {
+        if (fullText == null || charOffset < 0) return;
+        recalculatePages(Math.min(charOffset, fullText.length()));
+        repaint();
     }
 
     /** 跳转到指定原始行，以该行为锚点重新分页，使标题显示在第一行 */
@@ -114,8 +136,6 @@ public class TextPage extends JPanel {
 
     public void setReaderFont(Font f) {
         this.font = f;
-        recalculatePages(pageStarts.isEmpty() ? 0 : pageStarts.get(currentPage));
-        repaint();
     }
 
     public void setTextColor(Color c) { this.textColor = c; repaint(); }
@@ -219,6 +239,11 @@ public class TextPage extends JPanel {
 
     /** 分页变化回调，供外部（如目录面板）刷新数据 */
     private Runnable onPagesChanged;
+
+    /** 取消待执行的缩放重算，防止启动时覆盖已恢复的进度 */
+    public void cancelResizeTimer() {
+        resizeTimer.stop();
+    }
 
     public void setOnPagesChanged(Runnable callback) {
         this.onPagesChanged = callback;

@@ -93,7 +93,7 @@ public class ReaderWindow extends JFrame {
         titleBar = new TitleBar(this);
 
         // 分页变化时（如缩放），自动刷新目录页码
-        textPage.setOnPagesChanged(() -> tocPanel.rebuildTOC());
+        textPage.setOnPagesChanged(tocPanel::rebuildTOC);
 
         setupMenuBar();
         assembleLayout();
@@ -198,7 +198,10 @@ public class ReaderWindow extends JFrame {
 
         JMenuItem settingsItem = createMenuItem("设置...", null);
         settingsItem.addActionListener(e -> {
-            SettingsDialog dialog = new SettingsDialog(this, config, textPage);
+            SettingsDialog dialog = new SettingsDialog(this, config, textPage,
+                    () -> {
+                        setupKeyBindings();
+                    });
             dialog.setVisible(true);
             tocPanel.rebuildTOC();
         });
@@ -312,49 +315,60 @@ public class ReaderWindow extends JFrame {
         }
     }
 
-    /** 设置全局快捷键，绑定到 textPage（WHEN_IN_FOCUSED_WINDOW 作用域） */
+    /** 设置全局快捷键，键位从配置读取 */
     private void setupKeyBindings() {
-        InputMap im = textPage.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-        ActionMap am = textPage.getActionMap();
+        InputMap im = getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = getRootPane().getActionMap();
 
-        // 翻页快捷键
-        im.put(KeyStroke.getKeyStroke('j'), "nextPage");
-        im.put(KeyStroke.getKeyStroke('k'), "prevPage");
-        im.put(KeyStroke.getKeyStroke("PAGE_DOWN"), "nextPage");
-        im.put(KeyStroke.getKeyStroke("PAGE_UP"), "prevPage");
-        im.put(KeyStroke.getKeyStroke("RIGHT"), "nextPage");
-        im.put(KeyStroke.getKeyStroke("LEFT"), "prevPage");
-        im.put(KeyStroke.getKeyStroke("DOWN"), "nextPage");
-        im.put(KeyStroke.getKeyStroke("UP"), "prevPage");
-        im.put(KeyStroke.getKeyStroke("SPACE"), "nextPage");
+        bindKeys(im, "nextPage",    "j, PAGE_DOWN, RIGHT, DOWN, SPACE");
+        bindKeys(im, "prevPage",    "k, PAGE_UP, LEFT, UP");
+        bindKeys(im, "toggleToc",   "c");
+        bindKeys(im, "toggleBorder","o");
+        bindKeys(im, "increaseOpacity", "control EQUALS, control PLUS");
+        bindKeys(im, "decreaseOpacity", "control MINUS");
+        bindKeys(im, "nextChapter", "control J, control PAGE_DOWN, control RIGHT, control DOWN, control SPACE");
+        bindKeys(im, "prevChapter", "control K, control PAGE_UP, control LEFT, control UP");
 
-        // 功能快捷键
-        im.put(KeyStroke.getKeyStroke('c'), "toggleToc");
-        im.put(KeyStroke.getKeyStroke('o'), "toggleBorder");
+        am.put("nextPage", new AbstractAction() { public void actionPerformed(ActionEvent e) { textPage.nextPage(); }});
+        am.put("prevPage", new AbstractAction() { public void actionPerformed(ActionEvent e) { textPage.prevPage(); }});
+        am.put("toggleToc", new AbstractAction() { public void actionPerformed(ActionEvent e) { toggleToc(); }});
+        am.put("toggleBorder", new AbstractAction() { public void actionPerformed(ActionEvent e) { toggleBorder(); }});
+        am.put("increaseOpacity", new AbstractAction() { public void actionPerformed(ActionEvent e) { adjustOpacity(0.05f); }});
+        am.put("decreaseOpacity", new AbstractAction() { public void actionPerformed(ActionEvent e) { adjustOpacity(-0.05f); }});
+        am.put("nextChapter", new AbstractAction() { public void actionPerformed(ActionEvent e) { jumpNextChapter(); }});
+        am.put("prevChapter", new AbstractAction() { public void actionPerformed(ActionEvent e) { jumpPrevChapter(); }});
+    }
 
-        // 透明度快捷键
-        im.put(KeyStroke.getKeyStroke("control EQUALS"), "increaseOpacity");
-        im.put(KeyStroke.getKeyStroke("control PLUS"), "increaseOpacity");
-        im.put(KeyStroke.getKeyStroke("control MINUS"), "decreaseOpacity");
+    private void bindKeys(InputMap im, String action, String defaultKeys) {
+        String keys = config.getKeyBinding(action, defaultKeys);
+        for (String k : keys.split(",\\s*")) {
+            if (!k.isBlank()) {
+                KeyStroke ks = toKeyStroke(k.trim());
+                if (ks != null) im.put(ks, action);
+            }
+        }
+    }
 
-        am.put("nextPage", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { textPage.nextPage(); }
-        });
-        am.put("prevPage", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { textPage.prevPage(); }
-        });
-        am.put("toggleToc", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { toggleToc(); }
-        });
-        am.put("toggleBorder", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { toggleBorder(); }
-        });
-        am.put("increaseOpacity", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { adjustOpacity(0.05f); }
-        });
-        am.put("decreaseOpacity", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { adjustOpacity(-0.05f); }
-        });
+    /** 单字母转为 KEY_PRESSED，确保 root pane 的 WHEN_IN_FOCUSED_WINDOW 能匹配 */
+    private static KeyStroke toKeyStroke(String s) {
+        if (s.length() == 1) {
+            int code = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(s.charAt(0));
+            if (code != java.awt.event.KeyEvent.VK_UNDEFINED)
+                return KeyStroke.getKeyStroke(code, 0);
+        }
+        return KeyStroke.getKeyStroke(s);
+    }
+
+    private void jumpNextChapter() {
+        int cur = textPage.getCurrentOriginalLine();
+        int next = tocPanel.getNextChapterLine(cur);
+        if (next >= 0) textPage.jumpToLine(next);
+    }
+
+    private void jumpPrevChapter() {
+        int cur = textPage.getCurrentOriginalLine();
+        int prev = tocPanel.getPrevChapterLine(cur);
+        if (prev >= 0) textPage.jumpToLine(prev);
     }
 
     /** 设置拖放导入：从文件管理器拖入 .txt 文件到文本区域 */
@@ -508,7 +522,8 @@ public class ReaderWindow extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
-                restoreSession(); // 窗口显示布局完成后恢复，确保 textPage 已有有效尺寸
+                restoreSession(); // 窗口显示布局完成后恢复
+                textPage.cancelResizeTimer(); // 防止残余的 resize 定时器覆盖已恢复的页码
             }
             @Override
             public void windowClosing(WindowEvent e) {

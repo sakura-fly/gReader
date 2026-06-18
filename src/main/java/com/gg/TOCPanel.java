@@ -41,6 +41,7 @@ public class TOCPanel extends JPanel {
     private final ConfigManager config;
     private final DefaultListModel<TOCEntry> model;
     private final JList<TOCEntry> list;
+    private boolean updatingSelection;
 
     public TOCPanel(ConfigManager config, TextPage textPage) {
         this.config = config;
@@ -68,11 +69,10 @@ public class TOCPanel extends JPanel {
 
         // 点击目录项跳转到对应页面
         list.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                TOCEntry entry = list.getSelectedValue();
-                if (entry != null) {
-                    textPage.jumpToLine(entry.line());
-                }
+            if (updatingSelection || e.getValueIsAdjusting()) return;
+            TOCEntry entry = list.getSelectedValue();
+            if (entry != null) {
+                textPage.jumpToLine(entry.line());
             }
         });
 
@@ -108,7 +108,9 @@ public class TOCPanel extends JPanel {
         }
 
         if (!model.isEmpty()) {
+            updatingSelection = true;
             list.setSelectedIndex(0);
+            updatingSelection = false;
         }
     }
 
@@ -130,6 +132,26 @@ public class TOCPanel extends JPanel {
         return patterns;
     }
 
+    /** 当前行之后的下一个章节行号，无则返回 -1 */
+    public int getNextChapterLine(int currentLine) {
+        for (int i = 0; i < model.size(); i++) {
+            int l = model.get(i).line();
+            if (l > currentLine) return l;
+        }
+        return -1;
+    }
+
+    /** 当前行之前的上一章节行号，无则返回 -1 */
+    public int getPrevChapterLine(int currentLine) {
+        int prev = -1;
+        for (int i = 0; i < model.size(); i++) {
+            int l = model.get(i).line();
+            if (l >= currentLine) break;
+            prev = l;
+        }
+        return prev;
+    }
+
     /** 切换目录面板的显示/隐藏 */
     public void toggle() {
         setVisible(!isVisible());
@@ -141,7 +163,9 @@ public class TOCPanel extends JPanel {
 
     public void refreshListSelection() {
         if (!model.isEmpty()) {
+            updatingSelection = true;
             list.setSelectedIndex(0);
+            updatingSelection = false;
         }
     }
 
