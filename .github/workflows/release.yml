@@ -1,9 +1,6 @@
 name: Release Build
 
-on:
-  push:
-    tags:
-      - '*'
+on: push
 
 jobs:
   build:
@@ -72,14 +69,18 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          ls -R build/${{ matrix.type }}/
           PKG="gReader-${{ steps.version.outputs.ver }}-${{ matrix.os }}-${{ matrix.type }}"
+          SRC="build/${{ matrix.type }}/gReader"
+          # macOS jpackage 输出 .app 包
+          if [[ -d "build/${{ matrix.type }}/gReader.app" ]]; then
+            SRC="build/${{ matrix.type }}/gReader.app"
+          fi
+          echo "source: $SRC"
+          ls -la "$SRC" 2>/dev/null || (echo "ERROR: $SRC not found" && exit 1)
           if [[ "${{ matrix.os }}" == windows-* ]]; then
-            powershell Compress-Archive -Path 'build\${{ matrix.type }}\gReader' -DestinationPath "${PKG}.zip"
-          elif [[ "${{ matrix.os }}" == macos-* ]]; then
-            tar -czf "${PKG}.tar.gz" -C "build/${{ matrix.type }}" gReader.app
+            powershell Compress-Archive -Path "${SRC}" -DestinationPath "${PKG}.zip"
           else
-            tar -czf "${PKG}.tar.gz" -C "build/${{ matrix.type }}" gReader
+            tar -czf "${PKG}.tar.gz" -C "$(dirname "$SRC")" "$(basename "$SRC")"
           fi
           echo "pkg=${PKG}" >> $GITHUB_OUTPUT
         id: pkg
