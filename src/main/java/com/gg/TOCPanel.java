@@ -45,11 +45,12 @@ public class TOCPanel extends JPanel {
     public TOCPanel(ConfigManager config, TextPage textPage) {
         this.config = config;
         this.textPage = textPage;
-        setPreferredSize(new Dimension(WIDTH, 0));
-        setMinimumSize(new Dimension(WIDTH, 0));
         setLayout(new BorderLayout());
         setBackground(Color.WHITE);
-        setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, new Color(0xCCCCCC)));
+        // 悬浮面板边框：四周带阴影效果
+        setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(0xBBBBBB), 1),
+                BorderFactory.createLineBorder(new Color(0xEEEEEE), 3)));
 
         JLabel header = new JLabel("  目录");
         header.setFont(new Font("SansSerif", Font.BOLD, 14));
@@ -70,7 +71,7 @@ public class TOCPanel extends JPanel {
             if (!e.getValueIsAdjusting()) {
                 TOCEntry entry = list.getSelectedValue();
                 if (entry != null) {
-                    textPage.goToPage(entry.page());
+                    textPage.jumpToLine(entry.line());
                 }
             }
         });

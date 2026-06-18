@@ -7,6 +7,8 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.event.ActionEvent;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
@@ -26,6 +28,7 @@ import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.JLayeredPane;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
@@ -89,6 +92,9 @@ public class ReaderWindow extends JFrame {
         tocPanel = new TOCPanel(config, textPage);
         titleBar = new TitleBar(this);
 
+        // 分页变化时（如缩放），自动刷新目录页码
+        textPage.setOnPagesChanged(() -> tocPanel.rebuildTOC());
+
         setupMenuBar();
         assembleLayout();
         setupKeyBindings();
@@ -108,22 +114,46 @@ public class ReaderWindow extends JFrame {
         tocPanel.setVisible(config.isTocVisible());
     }
 
-    /** 组装布局：标题栏 + 菜单栏（上）+ 主面板（文本区域 + 目录侧边栏） */
+    /** 组装布局：标题栏 + 菜单栏（上）+ 文本区域（满铺），目录为悬浮覆盖层 */
     private void assembleLayout() {
         JPanel rootPanel = new JPanel(new BorderLayout());
 
-        // 头部面板：标题栏在上，菜单栏在下
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.add(titleBar, BorderLayout.NORTH);
         headerPanel.add(menuBar, BorderLayout.SOUTH);
         rootPanel.add(headerPanel, BorderLayout.NORTH);
 
-        JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.add(textPage, BorderLayout.CENTER);
-        mainPanel.add(tocPanel, BorderLayout.EAST);
-        rootPanel.add(mainPanel, BorderLayout.CENTER);
+        // 文本区域满铺，目录作为悬浮层不影响其尺寸
+        rootPanel.add(textPage, BorderLayout.CENTER);
 
         setContentPane(rootPanel);
+
+        // 将目录面板放入 JFrame 的层级面板（PALETTE_LAYER），悬浮显示
+        JLayeredPane layeredPane = getLayeredPane();
+        layeredPane.add(tocPanel, JLayeredPane.PALETTE_LAYER);
+
+        // 窗口尺寸变化时重新定位目录面板
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                positionTocOverlay();
+            }
+            @Override
+            public void componentMoved(ComponentEvent e) {
+                positionTocOverlay();
+            }
+        });
+    }
+
+    /** 将目录面板定位在窗口右侧，高度与文本区域一致 */
+    private void positionTocOverlay() {
+        int tocWidth = 260;
+        int x = getContentPane().getWidth() - tocWidth;
+        int headerH = titleBar.isVisible() ? titleBar.getHeight() : 0;
+        headerH += (menuBar != null && menuBar.isVisible()) ? menuBar.getHeight() : 0;
+        int y = headerH;
+        int h = getContentPane().getHeight() - headerH;
+        tocPanel.setBounds(x, y, tocWidth, h);
     }
 
     /** 构建菜单栏：文件 / 视图 / 跳转 */
@@ -159,14 +189,7 @@ public class ReaderWindow extends JFrame {
         // ===== 视图菜单 =====
         JMenu viewMenu = createMenu("视图");
         JMenuItem tocMenuItem = createMenuItem("目录", "control T");
-        tocMenuItem.addActionListener(e -> {
-            tocPanel.toggle();
-            // 延迟执行，等待布局更新后再重算分页
-            SwingUtilities.invokeLater(() -> {
-                textPage.recalculatePages();
-                textPage.repaint();
-            });
-        });
+        tocMenuItem.addActionListener(e -> toggleToc());
         viewMenu.add(tocMenuItem);
 
         JMenuItem borderItem = createMenuItem("切换边框", "control B");
@@ -321,14 +344,7 @@ public class ReaderWindow extends JFrame {
             public void actionPerformed(ActionEvent e) { textPage.prevPage(); }
         });
         am.put("toggleToc", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) {
-                tocPanel.toggle();
-                // 等待布局更新后再重算分页（因为文本区域宽度可能改变）
-                SwingUtilities.invokeLater(() -> {
-                    textPage.recalculatePages();
-                    textPage.repaint();
-                });
-            }
+            public void actionPerformed(ActionEvent e) { toggleToc(); }
         });
         am.put("toggleBorder", new AbstractAction() {
             public void actionPerformed(ActionEvent e) { toggleBorder(); }
@@ -519,7 +535,15 @@ public class ReaderWindow extends JFrame {
         System.exit(0);
     }
 
-    /** 切换边框：隐藏/显示菜单栏和标题栏，文本区域自动重新分页以填充空间 */
+    /** 切换目录悬浮面板并更新位置 */
+    private void toggleToc() {
+        tocPanel.toggle();
+        if (tocPanel.isVisible()) {
+            positionTocOverlay();
+        }
+    }
+
+    /** 切换边框：隐藏/显示菜单栏和标题栏 */
     void toggleBorder() {
         borderVisible = !borderVisible;
         if (menuBar != null) menuBar.setVisible(borderVisible);

@@ -94,6 +94,14 @@ public class TextPage extends JPanel {
         }
     }
 
+    /** 跳转到指定原始行，以该行为锚点重新分页，使标题显示在第一行 */
+    public void jumpToLine(int originalLine) {
+        if (originalLine >= 0 && originalLine < lineStartChars.size()) {
+            recalculatePages(lineStartChars.get(originalLine));
+            repaint();
+        }
+    }
+
     /** 根据原始行号计算所在页码 */
     public int getPageForLine(int originalLine) {
         if (originalLine < 0 || originalLine >= lineStartChars.size()) return 0;
@@ -209,10 +217,18 @@ public class TextPage extends JPanel {
         currentPage = backward.size(); // 锚点页的索引
     }
 
+    /** 分页变化回调，供外部（如目录面板）刷新数据 */
+    private Runnable onPagesChanged;
+
+    public void setOnPagesChanged(Runnable callback) {
+        this.onPagesChanged = callback;
+    }
+
     /** 缩放触发的重算，使用当前页首字符作为锚点 */
     void recalculatePages() {
         int anchor = pageStarts.isEmpty() ? 0 : pageStarts.get(currentPage);
         recalculatePages(anchor);
+        if (onPagesChanged != null) onPagesChanged.run();
     }
 
     /**
