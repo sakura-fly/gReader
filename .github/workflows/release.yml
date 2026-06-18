@@ -72,10 +72,12 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          DIR="build/${{ matrix.type }}/gReader"
+          ls -R build/${{ matrix.type }}/
           PKG="gReader-${{ steps.version.outputs.ver }}-${{ matrix.os }}-${{ matrix.type }}"
           if [[ "${{ matrix.os }}" == windows-* ]]; then
-            powershell Compress-Archive -Path "$DIR" -DestinationPath "${PKG}.zip"
+            powershell Compress-Archive -Path 'build\${{ matrix.type }}\gReader' -DestinationPath "${PKG}.zip"
+          elif [[ "${{ matrix.os }}" == macos-* ]]; then
+            tar -czf "${PKG}.tar.gz" -C "build/${{ matrix.type }}" gReader.app
           else
             tar -czf "${PKG}.tar.gz" -C "build/${{ matrix.type }}" gReader
           fi
