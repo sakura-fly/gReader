@@ -1,0 +1,145 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        type: [full, slim]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build JAR
+        run: mvn package -DskipTests -q
+
+      - name: Get version
+        id: version
+        run: |
+          VER=$(grep '<version>' pom.xml | head -1 | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+          echo "ver=$VER" >> $GITHUB_OUTPUT
+
+      - name: Build full runtime (bundle JDK)
+        if: matrix.type == 'full'
+        run: |
+          echo "Building full package..."
+          jpackage \
+            --name gReader \
+            --input target \
+            --main-jar "gReader-${{ steps.version.outputs.ver }}.jar" \
+            --main-class com.gg.Main \
+            --type app-image \
+            --dest build/full \
+            --java-options "-Xms64m -Xmx256m" \
+            --runtime-image "$JAVA_HOME" \
+            --app-version "${{ steps.version.outputs.ver }}"
+
+      - name: Build slim runtime (jlink minimal JRE)
+        if: matrix.type == 'slim'
+        run: |
+          echo "Creating minimal JRE..."
+          jlink \
+            --output /tmp/jre-min \
+            --add-modules java.desktop,java.prefs,java.datatransfer,java.xml \
+            --strip-native-commands \
+            --no-man-pages --no-header-files \
+            --compress=2
+          echo "Building slim package..."
+          jpackage \
+            --name gReader \
+            --input target \
+            --main-jar "gReader-${{ steps.version.outputs.ver }}.jar" \
+            --main-class com.gg.Main \
+            --type app-image \
+            --dest build/slim \
+            --java-options "-Xms64m -Xmx256m" \
+            --runtime-image /tmp/jre-min \
+            --app-version "${{ steps.version.outputs.ver }}"
+
+      - name: Package
+        shell: bash
+        run: |
+          DIR="build/${{ matrix.type }}/gReader"
+          PKG="gReader-${{ steps.version.outputs.ver }}-${{ matrix.os }}-${{ matrix.type }}"
+          if [[ "${{ matrix.os }}" == windows-* ]]; then
+            powershell Compress-Archive -Path "$DIR" -DestinationPath "${PKG}.zip"
+          else
+            tar -czf "${PKG}.tar.gz" -C "build/${{ matrix.type }}" gReader
+          fi
+          echo "pkg=${PKG}" >> $GITHUB_OUTPUT
+        id: pkg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gReader-${{ steps.version.outputs.ver }}-${{ matrix.os }}-${{ matrix.type }}
+          path: |
+            ${{ steps.pkg.outputs.pkg }}.tar.gz
+            ${{ steps.pkg.outputs.pkg }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            LOG=$(git log --oneline --no-merges)
+          else
+            LOG=$(git log --oneline --no-merges ${LAST_TAG}..HEAD)
+          fi
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$LOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: artifacts/**/*
+          body: |
+            ## 更新日志
+
+            ```
+            ${{ steps.notes.outputs.log }}
+            ```
+
+            ## 下载
+
+            | 平台 | 类型 | 说明 |
+            |------|------|------|
+            | Windows | full | 含完整 JRE，无需 Java |
+            | Windows | slim | jlink 精简，需 Java 17 |
+            | Linux | full | 含完整 JRE，无需 Java |
+            | Linux | slim | jlink 精简，需 Java 17 |
+            | macOS | full | 含完整 JRE，无需 Java |
+            | macOS | slim | jlink 精简，需 Java 17 |
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
