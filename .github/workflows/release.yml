@@ -25,12 +25,14 @@ jobs:
 
       - name: Get version
         id: version
+        shell: bash
         run: |
           VER=$(grep '<version>' pom.xml | head -1 | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
           echo "ver=$VER" >> $GITHUB_OUTPUT
 
       - name: Build full runtime (bundle JDK)
         if: matrix.type == 'full'
+        shell: bash
         run: |
           echo "Building full package..."
           jpackage \
@@ -45,6 +47,7 @@ jobs:
 
       - name: Build slim runtime (jlink minimal JRE)
         if: matrix.type == 'slim'
+        shell: bash
         run: |
           echo "Creating minimal JRE..."
           jlink \
@@ -102,6 +105,7 @@ jobs:
 
       - name: Generate release notes
         id: notes
+        shell: bash
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
