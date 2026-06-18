@@ -76,27 +76,27 @@ jobs:
         run: |
           PKG="gReader-${{ steps.version.outputs.ver }}-${{ matrix.os }}-${{ matrix.type }}"
           SRC="build/${{ matrix.type }}/gReader"
-          # macOS jpackage 输出 .app 包
-          if [[ -d "build/${{ matrix.type }}/gReader.app" ]]; then
-            SRC="build/${{ matrix.type }}/gReader.app"
-          fi
+          if [[ -d "build/${{ matrix.type }}/gReader.app" ]]; then SRC="build/${{ matrix.type }}/gReader.app"; fi
           echo "source: $SRC"
-          ls -la "$SRC" 2>/dev/null || (echo "ERROR: $SRC not found" && exit 1)
+          ls "$SRC" >/dev/null || (echo "ERROR: $SRC not found" && exit 1)
           if [[ "${{ matrix.os }}" == windows-* ]]; then
-            powershell Compress-Archive -Path "${SRC}" -DestinationPath "${PKG}.zip"
+            FILE="${PKG}.zip"
+            # bash on Windows uses / but PowerShell needs \
+            powershell Compress-Archive -Path "${SRC//\//\\}" -DestinationPath "$FILE"
           else
-            tar -czf "${PKG}.tar.gz" -C "$(dirname "$SRC")" "$(basename "$SRC")"
+            FILE="${PKG}.tar.gz"
+            tar -czf "$FILE" -C "$(dirname "$SRC")" "$(basename "$SRC")"
           fi
-          echo "pkg=${PKG}" >> $GITHUB_OUTPUT
+          ls -lh "$FILE"
+          echo "file=${FILE}" >> $GITHUB_OUTPUT
         id: pkg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: gReader-${{ steps.version.outputs.ver }}-${{ matrix.os }}-${{ matrix.type }}
-          path: |
-            ${{ steps.pkg.outputs.pkg }}.tar.gz
-            ${{ steps.pkg.outputs.pkg }}.zip
+          path: ${{ steps.pkg.outputs.file }}
+          if-no-files-found: error
 
   release:
     needs: build
