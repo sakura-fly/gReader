@@ -171,13 +171,13 @@ public class ConfigManager {
         PREFS.putBoolean(KEY_BORDER_VISIBLE, v);
     }
 
-    /** 窗口透明度，范围 0.1（10%）~ 1.0（100%），默认完全不透明 */
-    public float getOpacity() {
-        return (float) PREFS.getDouble(KEY_OPACITY, 1.0);
+    /** 窗口背景透明度 25~255，默认 255 完全不透明（仅影响背景，不影响文字） */
+    public int getBgAlpha() {
+        return PREFS.getInt(KEY_OPACITY, 255);
     }
 
-    public void setOpacity(float v) {
-        PREFS.putDouble(KEY_OPACITY, Math.max(0.1f, Math.min(1.0f, v)));
+    public void setBgAlpha(int alpha) {
+        PREFS.putInt(KEY_OPACITY, Math.max(25, Math.min(255, alpha)));
     }
 
     // ==================== 主题 ====================

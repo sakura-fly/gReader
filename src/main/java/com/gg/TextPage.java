@@ -31,6 +31,7 @@ public class TextPage extends JPanel {
     private Color bgColor;
     private int currentPage;       // 当前页码（从0开始）
     private int totalPages;        // 总页数
+    private int bgAlpha = 255;     // 背景透明度 25~255
 
     /** 每页起始字符偏移量（在 fullText 中的位置），大小 = totalPages */
     private List<Integer> pageStarts = new ArrayList<>();
@@ -48,6 +49,8 @@ public class TextPage extends JPanel {
 
         setBackground(bgColor);
         setFocusable(true);
+        setOpaque(false); // per-pixel translucency
+        this.bgAlpha = config.getBgAlpha();
 
         resizeTimer = new Timer(150, e -> {
             recalculatePages();
@@ -142,8 +145,11 @@ public class TextPage extends JPanel {
 
     public void setBackgroundColor(Color c) {
         this.bgColor = c;
-        setBackground(c);
         repaint();
+    }
+
+    public void setBgAlpha(int alpha) {
+        this.bgAlpha = alpha;
     }
 
     /**
@@ -299,8 +305,12 @@ public class TextPage extends JPanel {
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                 RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        g2d.setColor(bgColor);
+        // Src 模式替换像素，避免旧内容透过半透明背景
+        g2d.setComposite(java.awt.AlphaComposite.Src);
+        g2d.setColor(new Color(bgColor.getRed(), bgColor.getGreen(),
+                bgColor.getBlue(), bgAlpha));
         g2d.fillRect(0, 0, getWidth(), getHeight());
+        g2d.setComposite(java.awt.AlphaComposite.SrcOver); // 恢复默认混合模式
 
         if (fullText == null || pageStarts.isEmpty()) {
             g2d.setColor(textColor);

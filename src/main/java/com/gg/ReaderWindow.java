@@ -63,6 +63,8 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 public class ReaderWindow extends JFrame {
     private static final int RESIZE_MARGIN = 6;
 
+    private float opacityOffect = 0.1f;
+
     private final ConfigManager config;
     private final TextPage textPage;
     private final TOCPanel tocPanel;
@@ -88,9 +90,10 @@ public class ReaderWindow extends JFrame {
         setUndecorated(true);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setTitle("gReader");
-        setOpacity(config.getOpacity());
+        setBackground(new Color(0, 0, 0, 0)); // per-pixel translucency
 
         textPage = new TextPage(config);
+        textPage.setBgAlpha(config.getBgAlpha());
         tocPanel = new TOCPanel(config, textPage);
         titleBar = new TitleBar(this);
 
@@ -120,16 +123,19 @@ public class ReaderWindow extends JFrame {
     /** 组装布局：标题栏 + 菜单栏（上）+ 文本区域（满铺），目录为悬浮覆盖层 */
     private void assembleLayout() {
         JPanel rootPanel = new JPanel(new BorderLayout());
+        rootPanel.setOpaque(false);
 
         JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
         headerPanel.add(titleBar, BorderLayout.NORTH);
         headerPanel.add(menuBar, BorderLayout.SOUTH);
         rootPanel.add(headerPanel, BorderLayout.NORTH);
 
-        // 文本区域满铺，目录作为悬浮层不影响其尺寸
         rootPanel.add(textPage, BorderLayout.CENTER);
 
         setContentPane(rootPanel);
+        getRootPane().setOpaque(false);
+        getLayeredPane().setOpaque(false);
 
         // 将目录面板放入 JFrame 的层级面板（PALETTE_LAYER），悬浮显示
         JLayeredPane layeredPane = getLayeredPane();
@@ -330,8 +336,8 @@ public class ReaderWindow extends JFrame {
         am.put("prevPage", new AbstractAction() { public void actionPerformed(ActionEvent e) { textPage.prevPage(); }});
         am.put("toggleToc", new AbstractAction() { public void actionPerformed(ActionEvent e) { toggleToc(); }});
         am.put("toggleBorder", new AbstractAction() { public void actionPerformed(ActionEvent e) { toggleBorder(); }});
-        am.put("increaseOpacity", new AbstractAction() { public void actionPerformed(ActionEvent e) { adjustOpacity(0.05f); }});
-        am.put("decreaseOpacity", new AbstractAction() { public void actionPerformed(ActionEvent e) { adjustOpacity(-0.05f); }});
+        am.put("increaseOpacity", new AbstractAction() { public void actionPerformed(ActionEvent e) { adjustOpacity(opacityOffect); }});
+        am.put("decreaseOpacity", new AbstractAction() { public void actionPerformed(ActionEvent e) { adjustOpacity(-opacityOffect); }});
         am.put("nextChapter", new AbstractAction() { public void actionPerformed(ActionEvent e) { jumpNextChapter(); }});
         am.put("prevChapter", new AbstractAction() { public void actionPerformed(ActionEvent e) { jumpPrevChapter(); }});
         am.put("openSettings", new AbstractAction() { public void actionPerformed(ActionEvent e) { openSettingsDialog(); }});
@@ -374,8 +380,8 @@ public class ReaderWindow extends JFrame {
                         case "toggleBorder" -> () -> toggleBorder();
                         case "nextChapter" -> () -> jumpNextChapter();
                         case "prevChapter" -> () -> jumpPrevChapter();
-                        case "increaseOpacity" -> () -> adjustOpacity(0.05f);
-                        case "decreaseOpacity" -> () -> adjustOpacity(-0.05f);
+                        case "increaseOpacity" -> () -> adjustOpacity(opacityOffect);
+                        case "decreaseOpacity" -> () -> adjustOpacity(-opacityOffect);
                         case "openSettings" -> () -> openSettingsDialog();
                         default -> null;
                     };
@@ -495,7 +501,7 @@ public class ReaderWindow extends JFrame {
         textPage.addMouseWheelListener(e -> {
             if (handleWheelShortcut(e)) { e.consume(); return; }
             if (e.isControlDown()) {
-                double delta = e.getPreciseWheelRotation() < 0 ? 0.05 : -0.05;
+                double delta = e.getPreciseWheelRotation() < 0 ? opacityOffect : -opacityOffect;
                 adjustOpacity((float) delta);
                 e.consume();
             }
@@ -600,7 +606,7 @@ public class ReaderWindow extends JFrame {
             config.setWindowBounds(getBounds());
         }
         config.setLastPage(textPage.getCurrentPage());
-        config.setOpacity(getOpacity());
+        config.setBgAlpha(config.getBgAlpha());
         config.setBorderVisible(borderVisible);
         config.setTocVisible(tocPanel.isVisible());
         config.flush(); // 强制写入磁盘
@@ -632,10 +638,13 @@ public class ReaderWindow extends JFrame {
     }
 
     /** 调节窗口透明度，范围限制在 10%（0.1）~ 100%（1.0） */
+    /** 调节窗口背景透明度，不影响文字 */
     void adjustOpacity(float delta) {
-        float newOpacity = Math.max(0.1f, Math.min(1.0f, getOpacity() + delta));
-        setOpacity(newOpacity);
-        config.setOpacity(newOpacity);
+        int alpha = config.getBgAlpha() + (int)(delta * 255);
+        alpha = Math.max(25, Math.min(255, alpha));
+        config.setBgAlpha(alpha);
+        textPage.setBgAlpha(alpha);
+        textPage.repaint();
     }
 
     /** 恢复上次会话：打开上次关闭时的文件和页码 */
