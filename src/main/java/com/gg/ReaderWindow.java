@@ -12,6 +12,7 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.event.MouseWheelEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import javax.swing.SwingUtilities;
@@ -98,6 +99,7 @@ public class ReaderWindow extends JFrame {
         setupMenuBar();
         assembleLayout();
         setupKeyBindings();
+        setupMouseBindings();
         setupDragAndDrop();
         setupWindowDrag();
         setupResizeHandles();
@@ -197,14 +199,7 @@ public class ReaderWindow extends JFrame {
         viewMenu.add(borderItem);
 
         JMenuItem settingsItem = createMenuItem("设置...", null);
-        settingsItem.addActionListener(e -> {
-            SettingsDialog dialog = new SettingsDialog(this, config, textPage,
-                    () -> {
-                        setupKeyBindings();
-                    });
-            dialog.setVisible(true);
-            tocPanel.rebuildTOC();
-        });
+        settingsItem.addActionListener(e -> openSettingsDialog());
         viewMenu.add(settingsItem);
         menuBar.add(viewMenu);
 
@@ -328,6 +323,7 @@ public class ReaderWindow extends JFrame {
         bindKeys(im, "decreaseOpacity", "control MINUS");
         bindKeys(im, "nextChapter", "control J, control PAGE_DOWN, control RIGHT, control DOWN, control SPACE");
         bindKeys(im, "prevChapter", "control K, control PAGE_UP, control LEFT, control UP");
+        bindKeys(im, "openSettings", "control alt S");
 
         am.put("nextPage", new AbstractAction() { public void actionPerformed(ActionEvent e) { textPage.nextPage(); }});
         am.put("prevPage", new AbstractAction() { public void actionPerformed(ActionEvent e) { textPage.prevPage(); }});
@@ -337,6 +333,14 @@ public class ReaderWindow extends JFrame {
         am.put("decreaseOpacity", new AbstractAction() { public void actionPerformed(ActionEvent e) { adjustOpacity(-0.05f); }});
         am.put("nextChapter", new AbstractAction() { public void actionPerformed(ActionEvent e) { jumpNextChapter(); }});
         am.put("prevChapter", new AbstractAction() { public void actionPerformed(ActionEvent e) { jumpPrevChapter(); }});
+        am.put("openSettings", new AbstractAction() { public void actionPerformed(ActionEvent e) { openSettingsDialog(); }});
+    }
+
+    private void openSettingsDialog() {
+        SettingsDialog dialog = new SettingsDialog(this, config, textPage,
+                () -> { setupKeyBindings(); setupMouseBindings(); });
+        dialog.setVisible(true);
+        tocPanel.rebuildTOC();
     }
 
     private void bindKeys(InputMap im, String action, String defaultKeys) {
@@ -350,6 +354,60 @@ public class ReaderWindow extends JFrame {
     }
 
     /** 单字母转为 KEY_PRESSED，确保 root pane 的 WHEN_IN_FOCUSED_WINDOW 能匹配 */
+    private java.util.Map<String, Runnable> mouseBindings = new java.util.HashMap<>();
+
+    /** 注册鼠标快捷键 */
+    private void setupMouseBindings() {
+        mouseBindings.clear();
+        String[] actions = {"nextPage","prevPage","toggleToc","toggleBorder",
+                            "nextChapter","prevChapter","increaseOpacity","decreaseOpacity","openSettings"};
+        for (String act : actions) {
+            String keys = config.getKeyBinding(act, "");
+            for (String k : keys.split(",\\s*")) {
+                if (k.contains("BUTTON") || k.contains("WHEEL")) {
+                    String norm = k.trim().replace("control", "ctrl");
+                    Runnable handler = switch (act) {
+                        case "nextPage" -> () -> textPage.nextPage();
+                        case "prevPage" -> () -> textPage.prevPage();
+                        case "toggleToc" -> () -> toggleToc();
+                        case "toggleBorder" -> () -> toggleBorder();
+                        case "nextChapter" -> () -> jumpNextChapter();
+                        case "prevChapter" -> () -> jumpPrevChapter();
+                        case "increaseOpacity" -> () -> adjustOpacity(0.05f);
+                        case "decreaseOpacity" -> () -> adjustOpacity(-0.05f);
+                        case "openSettings" -> () -> openSettingsDialog();
+                        default -> null;
+                    };
+                    if (handler != null) mouseBindings.put(norm, handler);
+                }
+            }
+        }
+    }
+
+    /** 检查鼠标事件是否匹配快捷键，匹配则执行并返回 true */
+    private boolean handleMouseShortcut(MouseEvent e) {
+        String mod = e.isControlDown() ? "ctrl " : "";
+        mod += e.isShiftDown() ? "shift " : "";
+        mod += e.isAltDown() ? "alt " : "";
+        String key = (mod + "BUTTON" + e.getButton()).trim();
+        Runnable act = mouseBindings.get(key);
+        if (act != null) { act.run(); return true; }
+        return false;
+    }
+
+    /** 检查滚轮事件是否匹配快捷键，匹配则执行并返回 true */
+    private boolean handleWheelShortcut(MouseWheelEvent e) {
+        if (mouseBindings.isEmpty()) return false;
+        String mod = e.isControlDown() ? "ctrl " : "";
+        mod += e.isShiftDown() ? "shift " : "";
+        mod += e.isAltDown() ? "alt " : "";
+        String dir = e.getWheelRotation() < 0 ? "WHEEL_UP" : "WHEEL_DOWN";
+        String key = (mod + dir).trim();
+        Runnable act = mouseBindings.get(key);
+        if (act != null) { act.run(); return true; }
+        return false;
+    }
+
     private static KeyStroke toKeyStroke(String s) {
         if (s.length() == 1) {
             int code = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(s.charAt(0));
@@ -403,6 +461,7 @@ public class ReaderWindow extends JFrame {
         textPage.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                if (handleMouseShortcut(e)) return; // 鼠标快捷键优先
                 if (resizeDir != 0) return; // 正在调整大小时不触发拖动
                 dragStart = e.getLocationOnScreen();
                 dragging = false;
@@ -431,7 +490,9 @@ public class ReaderWindow extends JFrame {
         });
 
         // Ctrl+鼠标滚轮 → 调节透明度
+        // Ctrl+滚轮：优先检查快捷键配置，未配置则默认调节透明度
         textPage.addMouseWheelListener(e -> {
+            if (handleWheelShortcut(e)) { e.consume(); return; }
             if (e.isControlDown()) {
                 double delta = e.getPreciseWheelRotation() < 0 ? 0.05 : -0.05;
                 adjustOpacity((float) delta);

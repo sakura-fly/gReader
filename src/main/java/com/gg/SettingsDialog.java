@@ -11,6 +11,10 @@ import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.KeyEventDispatcher;
+import java.awt.KeyboardFocusManager;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.Arrays;
 import java.util.List;
 import javax.swing.BorderFactory;
@@ -23,9 +27,10 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
-import javax.swing.JTextField;
 import javax.swing.JTextArea;
+import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingConstants;
 
 /**
  * 设置对话框 —— 调整字体、颜色和自定义目录正则。
@@ -51,7 +56,7 @@ public class SettingsDialog extends JDialog {
     private JButton textColorBtn;
     private JButton bgColorBtn;
     private JTextArea regexArea;
-    private java.util.Map<String, JTextField> keyFields;
+    private java.util.Map<String, JPanel> keyFields;
 
     public SettingsDialog(JFrame parent, ConfigManager config, TextPage textPage, Runnable onApplied) {
         super(parent, "设置", true);
@@ -65,6 +70,12 @@ public class SettingsDialog extends JDialog {
         buildUI();
         pack();
         setLocationRelativeTo(parent);
+
+        // ESC 关闭对话框
+        getRootPane().getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke("ESCAPE"), "close");
+        getRootPane().getActionMap().put("close",
+                new javax.swing.AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { dispose(); }});
     }
 
     private void buildUI() {
@@ -152,7 +163,7 @@ public class SettingsDialog extends JDialog {
         gbc.weighty = 0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         JPanel keyPanel = new JPanel(new GridBagLayout());
-        keyPanel.setBorder(BorderFactory.createTitledBorder("快捷键（逗号分隔多个，留空恢复默认）"));
+        keyPanel.setBorder(BorderFactory.createTitledBorder("快捷键（点击修改 / +添加 / ×删除）"));
         GridBagConstraints kg = new GridBagConstraints();
         kg.insets = new Insets(2, 4, 2, 4);
         kg.fill = GridBagConstraints.HORIZONTAL;
@@ -166,15 +177,84 @@ public class SettingsDialog extends JDialog {
             {"toggleBorder", "边框", "o"},
             {"increaseOpacity", "增加透明度", "control EQUALS, control PLUS"},
             {"decreaseOpacity", "减少透明度", "control MINUS"},
+            {"openSettings", "打开设置", "control alt S"},
         };
         keyFields = new java.util.LinkedHashMap<>();
         for (int i = 0; i < keyDefs.length; i++) {
+            String action = keyDefs[i][0];
+            String label = keyDefs[i][1];
+            String defKeys = keyDefs[i][2];
             kg.gridx = 0; kg.gridy = i; kg.weightx = 0;
-            keyPanel.add(new JLabel(keyDefs[i][1] + "："), kg);
+            keyPanel.add(new JLabel(label + "："), kg);
+
+            // 芯片面板：存放各快捷键的按钮
+            JPanel chipsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+            chipsPanel.setOpaque(false);
+
+            // 用 Consumer 包装重建芯片的方法（用数组绕开自引用初始化问题）
+            java.util.function.Consumer<String[]>[] holder = new java.util.function.Consumer[1];
+            holder[0] = (keys) -> {
+                chipsPanel.removeAll();
+                for (String k : keys) {
+                    if (k.isBlank()) continue;
+                    JButton chip = new JButton(k.trim());
+                    chip.setFont(new Font("SansSerif", Font.PLAIN, 11));
+                    chip.setMargin(new Insets(0, 4, 0, 4));
+                    chip.addActionListener(ev -> {
+                        KeyCaptureDialog cap = new KeyCaptureDialog((JFrame) getParent());
+                        cap.setVisible(true);
+                        if (cap.deleted) {
+                            // 收集除当前外的所有键，重建
+                            java.util.List<String> list = new java.util.ArrayList<>();
+                            for (Component c : chipsPanel.getComponents()) {
+                                if (c instanceof JButton b && b != chip) list.add(b.getText());
+                            }
+                            holder[0].accept(list.toArray(new String[0]));
+                        } else if (cap.captured != null) {
+                            chip.setText(cap.captured);
+                        }
+                    });
+                    chipsPanel.add(chip);
+                }
+                chipsPanel.revalidate();
+                chipsPanel.repaint();
+            };
+
+            String currentKeys = config.getKeyBinding(action, defKeys);
+            holder[0].accept(currentKeys.split(",\\s*"));
+
+            // 添加按钮
+            JButton addBtn = new JButton("+");
+            addBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            addBtn.setMargin(new Insets(0, 4, 0, 4));
+            addBtn.addActionListener(e -> {
+                KeyCaptureDialog cap = new KeyCaptureDialog((JFrame) getParent());
+                cap.setVisible(true);
+                if (cap.captured != null) {
+                    java.util.List<String> list = new java.util.ArrayList<>();
+                    for (Component c : chipsPanel.getComponents()) {
+                        if (c instanceof JButton b) list.add(b.getText());
+                    }
+                    list.add(cap.captured);
+                    holder[0].accept(list.toArray(new String[0]));
+                }
+            });
+
+            // 默认按钮
+            JButton resetBtn = new JButton("默认");
+            resetBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            resetBtn.setMargin(new Insets(0, 4, 0, 4));
+            resetBtn.addActionListener(ev -> holder[0].accept(defKeys.split(",\\s*")));
+
+            JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+            rightPanel.setOpaque(false);
+            rightPanel.add(chipsPanel);
+            rightPanel.add(addBtn);
+            rightPanel.add(resetBtn);
+
             kg.gridx = 1; kg.weightx = 1;
-            JTextField tf = new JTextField(config.getKeyBinding(keyDefs[i][0], keyDefs[i][2]), 20);
-            keyPanel.add(tf, kg);
-            keyFields.put(keyDefs[i][0], tf);
+            keyPanel.add(rightPanel, kg);
+            keyFields.put(action, chipsPanel);
         }
         panel.add(keyPanel, gbc);
 
@@ -230,9 +310,13 @@ public class SettingsDialog extends JDialog {
         config.setBackgroundColor(selectedBgColor);
         config.setCustomRegexes(Arrays.asList(regexArea.getText().split("\n")));
 
-        // 保存快捷键
+        // 保存快捷键（从芯片面板收集各按钮文本）
         for (var entry : keyFields.entrySet()) {
-            config.setKeyBinding(entry.getKey(), entry.getValue().getText().trim());
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            for (java.awt.Component c : entry.getValue().getComponents()) {
+                if (c instanceof JButton b) keys.add(b.getText());
+            }
+            config.setKeyBinding(entry.getKey(), String.join(", ", keys));
         }
 
         Font newFont = new Font(config.getFontFamily(), Font.PLAIN, config.getFontSize());
@@ -262,6 +346,93 @@ public class SettingsDialog extends JDialog {
             g.fillRect(4, 4, getWidth() - 8, getHeight() - 8);
             g.setColor(Color.GRAY);
             g.drawRect(4, 4, getWidth() - 8, getHeight() - 8);
+        }
+    }
+
+    /** 将 KeyStroke 转为可存储的字符串形式 */
+    private static String keyStrokeToString(KeyStroke ks) {
+        return ks.toString().replace("pressed ", "").replace("typed ", "").replace("released ", "");
+    }
+
+    /** 按键捕获对话框，含取消和删除按钮 */
+    private class KeyCaptureDialog extends JDialog {
+        String captured;
+        boolean deleted;
+
+        KeyCaptureDialog(JFrame parent) {
+            super(parent, "修改快捷键", true);
+            setUndecorated(true);
+            JPanel p = new JPanel(new BorderLayout(10, 10));
+            p.setBorder(BorderFactory.createEmptyBorder(20, 30, 20, 30));
+
+            JLabel label = new JLabel("按下新快捷键替换，或删除", SwingConstants.CENTER);
+            label.setFont(new Font("SansSerif", Font.PLAIN, 14));
+            p.add(label, BorderLayout.CENTER);
+
+            JPanel btns = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
+            JButton delBtn = new JButton("删除");
+            delBtn.addActionListener(e -> { deleted = true; dispose(); });
+            JButton cancelBtn = new JButton("取消");
+            cancelBtn.addActionListener(e -> dispose());
+            btns.add(delBtn);
+            btns.add(cancelBtn);
+            p.add(btns, BorderLayout.SOUTH);
+
+            add(p);
+            pack();
+            setLocationRelativeTo(parent);
+
+            var ref = new Object() { KeyEventDispatcher disp; };
+            ref.disp = e -> {
+                if (e.getID() == java.awt.event.KeyEvent.KEY_PRESSED) {
+                    int code = e.getKeyCode();
+                    // 跳过纯修饰键，等待组合键
+                    if (code != java.awt.event.KeyEvent.VK_CONTROL
+                            && code != java.awt.event.KeyEvent.VK_SHIFT
+                            && code != java.awt.event.KeyEvent.VK_ALT
+                            && code != java.awt.event.KeyEvent.VK_META
+                            && code != 0) {
+                        KeyStroke ks = KeyStroke.getKeyStrokeForEvent(e);
+                        captured = keyStrokeToString(ks);
+                        KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ref.disp);
+                        dispose();
+                    }
+                }
+                return true;
+            };
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(ref.disp);
+
+            // 鼠标捕获
+            // 滚轮捕获
+            addMouseWheelListener(e -> {
+                String mod = e.isControlDown() ? "ctrl " : "";
+                mod += e.isShiftDown() ? "shift " : "";
+                mod += e.isAltDown() ? "alt " : "";
+                String dir = e.getWheelRotation() < 0 ? "WHEEL_UP" : "WHEEL_DOWN";
+                captured = (mod + dir).trim();
+                KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ref.disp);
+                dispose();
+            });
+
+            addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mousePressed(java.awt.event.MouseEvent e) {
+                    if (e.getButton() > 5) return;
+                    String mod = e.isControlDown() ? "ctrl " : "";
+                    mod += e.isShiftDown() ? "shift " : "";
+                    mod += e.isAltDown() ? "alt " : "";
+                    captured = (mod + "BUTTON" + e.getButton()).trim();
+                    KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ref.disp);
+                    dispose();
+                }
+            });
+
+            addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosed(WindowEvent e) {
+                    KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ref.disp);
+                }
+            });
         }
     }
 }
