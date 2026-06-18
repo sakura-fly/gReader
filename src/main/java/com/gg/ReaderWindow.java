@@ -82,6 +82,7 @@ public class ReaderWindow extends JFrame {
 
     public ReaderWindow() {
         config = new ConfigManager();
+        config.applyTheme(config.getTheme()); // 启动时应用保存的主题
 
         // 无边框窗口，支持透明度和边框切换
         setUndecorated(true);

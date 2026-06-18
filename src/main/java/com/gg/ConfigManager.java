@@ -180,6 +180,31 @@ public class ConfigManager {
         PREFS.putDouble(KEY_OPACITY, Math.max(0.1f, Math.min(1.0f, v)));
     }
 
+    // ==================== 主题 ====================
+
+    public String getTheme() {
+        return PREFS.get("theme", "默认");
+    }
+
+    /** 设置主题并同步更新字体颜色配置 */
+    public void applyTheme(String name) {
+        PREFS.put("theme", name);
+        switch (name) {
+            case "IDEA Dark" -> {
+                setFontFamily("SansSerif");
+                setFontSize(16);
+                setTextColor(new Color(0x808080));   // 注释灰
+                setBackgroundColor(new Color(0x2B2B2B));
+            }
+            default -> {
+                setFontFamily("SansSerif");
+                setFontSize(16);
+                setTextColor(Color.BLACK);
+                setBackgroundColor(Color.WHITE);
+            }
+        }
+    }
+
     // ==================== 快捷键 ====================
 
     /** 获取某动作的快捷键字符串，逗号分隔，如 "j, PAGE_DOWN" */

@@ -85,9 +85,26 @@ public class SettingsDialog extends JDialog {
         gbc.insets = new Insets(4, 4, 4, 4);
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
+        // 主题选择
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
+        panel.add(new JLabel("主题："), gbc);
+        String[] themes = {"默认", "IDEA Dark"};
+        JComboBox<String> themeCombo = new JComboBox<>(themes);
+        themeCombo.setSelectedItem(config.getTheme());
+        themeCombo.addActionListener(e -> {
+            String theme = (String) themeCombo.getSelectedItem();
+            config.applyTheme(theme);
+            fontFamilyCombo.setSelectedItem(config.getFontFamily());
+            fontSizeSpinner.setValue(config.getFontSize());
+            selectedTextColor = config.getTextColor(); textColorBtn.repaint();
+            selectedBgColor = config.getBackgroundColor(); bgColorBtn.repaint();
+        });
+        gbc.gridx = 1; gbc.weightx = 1;
+        panel.add(themeCombo, gbc);
+
         // 字体选择
         gbc.gridx = 0;
-        gbc.gridy = 0;
+        gbc.gridy = 1;
         gbc.weightx = 0;
         panel.add(new JLabel("字体："), gbc);
 
@@ -101,7 +118,7 @@ public class SettingsDialog extends JDialog {
 
         // 字号选择
         gbc.gridx = 0;
-        gbc.gridy = 1;
+        gbc.gridy = 2;
         gbc.weightx = 0;
         panel.add(new JLabel("字号："), gbc);
 
@@ -112,7 +129,7 @@ public class SettingsDialog extends JDialog {
 
         // 文字颜色
         gbc.gridx = 0;
-        gbc.gridy = 2;
+        gbc.gridy = 3;
         gbc.weightx = 0;
         panel.add(new JLabel("文字颜色："), gbc);
 
@@ -127,7 +144,7 @@ public class SettingsDialog extends JDialog {
 
         // 背景颜色
         gbc.gridx = 0;
-        gbc.gridy = 3;
+        gbc.gridy = 4;
         gbc.weightx = 0;
         panel.add(new JLabel("背景颜色："), gbc);
 
@@ -142,7 +159,7 @@ public class SettingsDialog extends JDialog {
 
         // 自定义正则
         gbc.gridx = 0;
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         gbc.gridwidth = 2;
         gbc.weightx = 1;
         panel.add(new JLabel("自定义标题正则（每行一个）："), gbc);
@@ -152,13 +169,13 @@ public class SettingsDialog extends JDialog {
         regexArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         JScrollPane regexScroll = new JScrollPane(regexArea);
         regexScroll.setPreferredSize(new Dimension(400, 120));
-        gbc.gridy = 5;
+        gbc.gridy = 6;
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
         panel.add(regexScroll, gbc);
 
         // 快捷键设置
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         gbc.gridwidth = 2;
         gbc.weighty = 0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -259,7 +276,7 @@ public class SettingsDialog extends JDialog {
         panel.add(keyPanel, gbc);
 
         // 底部按钮：确定 / 应用 / 取消
-        gbc.gridy = 7;
+        gbc.gridy = 8;
         gbc.gridwidth = 2;
         gbc.weighty = 0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
