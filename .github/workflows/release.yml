@@ -107,6 +107,12 @@ jobs:
         id: notes
         shell: bash
         run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="latest"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
           LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
             LOG=$(git log --oneline --no-merges)
@@ -126,9 +132,10 @@ jobs:
         run: find artifacts -type f
 
       - name: Create release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.notes.outputs.tag }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           files: artifacts/**/*
           body: |
             ## 更新日志
