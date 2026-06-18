@@ -41,7 +41,6 @@ jobs:
             --type app-image \
             --dest build/full \
             --java-options "-Xms64m -Xmx256m" \
-            --runtime-image "$JAVA_HOME" \
             --app-version "${{ steps.version.outputs.ver }}"
 
       - name: Build slim runtime (jlink minimal JRE)
