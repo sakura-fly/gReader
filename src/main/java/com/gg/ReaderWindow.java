@@ -3,8 +3,20 @@ package com.gg;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Cursor;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.MenuItem;
+import java.awt.RenderingHints;
 import java.awt.Point;
+import java.awt.PopupMenu;
 import java.awt.Rectangle;
+import java.awt.AWTEvent;
+import java.awt.SystemTray;
+import java.awt.Toolkit;
+import java.awt.TrayIcon;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
@@ -72,6 +84,7 @@ public class ReaderWindow extends JFrame {
     private boolean borderVisible;
     private JMenuBar menuBar;
     private JMenu recentMenu;
+    private TrayIcon trayIcon;
 
     // 窗口拖动相关
     private Point dragStart;
@@ -88,7 +101,7 @@ public class ReaderWindow extends JFrame {
 
         // 无边框窗口，支持透明度和边框切换
         setUndecorated(true);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         setTitle("gReader");
         setBackground(new Color(0, 0, 0, 0)); // per-pixel translucency
 
@@ -108,6 +121,7 @@ public class ReaderWindow extends JFrame {
         setupWindowDrag();
         setupResizeHandles();
         setupCloseHandler();
+        setupSystemTray();
 
         setBounds(config.getWindowBounds());
         borderVisible = config.isBorderVisible();
@@ -331,7 +345,11 @@ public class ReaderWindow extends JFrame {
         bindKeys(im, "nextChapter", "control J, control PAGE_DOWN, control RIGHT, control DOWN, control SPACE");
         bindKeys(im, "prevChapter", "control K, control PAGE_UP, control LEFT, control UP");
         bindKeys(im, "openSettings", "control alt S");
+        bindKeys(im, "restoreWindow", "control shift R");
+        bindKeys(im, "hideWindow", "ESCAPE");
 
+        am.put("restoreWindow", new AbstractAction() { public void actionPerformed(ActionEvent e) { restoreFromTray(); }});
+        am.put("hideWindow", new AbstractAction() { public void actionPerformed(ActionEvent e) { hideToTray(); }});
         am.put("nextPage", new AbstractAction() { public void actionPerformed(ActionEvent e) { textPage.nextPage(); }});
         am.put("prevPage", new AbstractAction() { public void actionPerformed(ActionEvent e) { textPage.prevPage(); }});
         am.put("toggleToc", new AbstractAction() { public void actionPerformed(ActionEvent e) { toggleToc(); }});
@@ -367,7 +385,7 @@ public class ReaderWindow extends JFrame {
     private void setupMouseBindings() {
         mouseBindings.clear();
         String[] actions = {"nextPage","prevPage","toggleToc","toggleBorder",
-                            "nextChapter","prevChapter","increaseOpacity","decreaseOpacity","openSettings"};
+                            "nextChapter","prevChapter","increaseOpacity","decreaseOpacity","openSettings","restoreWindow","hideWindow"};
         for (String act : actions) {
             String keys = config.getKeyBinding(act, "");
             for (String k : keys.split(",\\s*")) {
@@ -383,6 +401,8 @@ public class ReaderWindow extends JFrame {
                         case "increaseOpacity" -> () -> adjustOpacity(opacityOffect);
                         case "decreaseOpacity" -> () -> adjustOpacity(-opacityOffect);
                         case "openSettings" -> () -> openSettingsDialog();
+                        case "restoreWindow" -> () -> restoreFromTray();
+                        case "hideWindow" -> () -> hideToTray();
                         default -> null;
                     };
                     if (handler != null) mouseBindings.put(norm, handler);
@@ -596,6 +616,12 @@ public class ReaderWindow extends JFrame {
             @Override
             public void windowClosing(WindowEvent e) {
                 saveState();
+                if (trayIcon != null) {
+                    setVisible(false); // 隐藏到托盘
+                } else {
+                    dispose();
+                    System.exit(0);
+                }
             }
         });
     }
@@ -613,9 +639,63 @@ public class ReaderWindow extends JFrame {
     }
 
     private void saveAndExit() {
+        if (trayIcon != null) SystemTray.getSystemTray().remove(trayIcon);
         saveState();
         dispose();
         System.exit(0);
+    }
+
+    /** 系统托盘：关闭时隐藏到托盘，双击恢复 */
+    private static Image loadTrayImage() {
+        // 先尝试加载已保存的图标
+        File iconFile = new File(System.getProperty("user.home"), ".greader-tray.png");
+        if (iconFile.exists()) {
+            try { return ImageIO.read(iconFile); } catch (IOException ignored) {}
+        }
+        // 首次生成并保存
+        BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = img.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(Color.BLACK); g2.fillOval(0, 0, 15, 15);
+        g2.setColor(Color.WHITE);
+        int cx = 7, cy = 7;
+        for (int i = 0; i < 5; i++) {
+            double a = Math.toRadians(i * 72 - 90);
+            int px = cx + (int)(3 * Math.cos(a));
+            int py = cy + (int)(3 * Math.sin(a));
+            g2.fillOval(px - 3, py - 4, 6, 8);
+        }
+        g2.fillOval(cx - 1, cy - 1, 3, 3);
+        g2.dispose();
+        try { ImageIO.write(img, "png", iconFile); } catch (IOException ignored) {}
+        return img;
+    }
+
+    private void setupSystemTray() {
+        if (!SystemTray.isSupported()) return;
+        try {
+            trayIcon = new TrayIcon((BufferedImage) loadTrayImage(), "gReader");
+            PopupMenu menu = new PopupMenu();
+            MenuItem showItem = new MenuItem("显示");
+            showItem.addActionListener(e -> restoreFromTray());
+            MenuItem exitItem = new MenuItem("退出");
+            exitItem.addActionListener(e -> saveAndExit());
+            menu.add(showItem); menu.add(exitItem);
+            trayIcon.setPopupMenu(menu);
+            trayIcon.addActionListener(e -> restoreFromTray());
+            SystemTray.getSystemTray().add(trayIcon);
+        } catch (Exception ignored) {}
+    }
+
+    private void hideToTray() {
+        saveState();
+        setVisible(false);
+    }
+
+    private void restoreFromTray() {
+        setVisible(true);
+        setState(JFrame.NORMAL);
+        toFront();
     }
 
     /** 切换目录悬浮面板并更新位置 */

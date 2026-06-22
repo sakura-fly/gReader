@@ -193,6 +193,8 @@ public class SettingsDialog extends JDialog {
             {"increaseOpacity", "增加透明度", "control EQUALS, control PLUS"},
             {"decreaseOpacity", "减少透明度", "control MINUS"},
             {"openSettings", "打开设置", "control alt S"},
+            {"restoreWindow", "恢复窗口", "control shift R"},
+            {"hideWindow", "隐藏窗口", "ESCAPE"},
         };
         keyFields = new java.util.LinkedHashMap<>();
         for (int i = 0; i < keyDefs.length; i++) {
