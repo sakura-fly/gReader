@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        type: [full, slim]
+        type: [full, slim, jar]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +73,31 @@ jobs:
             --java-options "-Xms64m -Xmx256m" \
             --runtime-image /tmp/jre-min \
             --app-version "${{ steps.version.outputs.ver }}"
+
+      - name: Build JAR + launch scripts
+        if: matrix.type == 'jar'
+        shell: bash
+        run: |
+          VER="${{ steps.version.outputs.ver }}"
+          JAR="gReader-${VER}.jar"
+          mkdir -p build/jar/gReader
+
+          # Linux/macOS 启动脚本
+          cat > build/jar/gReader/gReader.sh << 'SH'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          java -jar "$DIR/gReader-*.jar" "$@"
+          SH
+          chmod +x build/jar/gReader/gReader.sh
+
+          # Windows 启动脚本
+          cat > build/jar/gReader/gReader.bat << 'BAT'
+          @echo off
+          java -jar "%~dp0gReader-*.jar" %*
+          BAT
+
+          cp "target/${JAR}" build/jar/gReader/
+          echo "JAR + scripts ready"
 
       - name: Package
         shell: bash
@@ -153,5 +178,8 @@ jobs:
             | Linux | slim | jlink 精简，需 Java 17 |
             | macOS | full | 含完整 JRE，无需 Java |
             | macOS | slim | jlink 精简，需 Java 17 |
+            | Linux | jar | JAR + 启动脚本，需 Java 17 |
+            | Windows | jar | JAR + 启动脚本，需 Java 17 |
+            | macOS | jar | JAR + 启动脚本，需 Java 17 |
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

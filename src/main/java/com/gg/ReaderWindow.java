@@ -14,6 +14,7 @@ import java.awt.AWTEvent;
 import java.awt.SystemTray;
 import java.awt.Toolkit;
 import java.awt.TrayIcon;
+import java.awt.geom.AffineTransform;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
@@ -104,6 +105,7 @@ public class ReaderWindow extends JFrame {
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         setTitle("gReader");
         setBackground(new Color(0, 0, 0, 0)); // per-pixel translucency
+        setIconImage(loadTrayImage()); // 应用图标
 
         textPage = new TextPage(config);
         textPage.setBgAlpha(config.getBgAlpha());
@@ -647,34 +649,48 @@ public class ReaderWindow extends JFrame {
 
     /** 系统托盘：关闭时隐藏到托盘，双击恢复 */
     private static Image loadTrayImage() {
-        // 先尝试加载已保存的图标
         File iconFile = new File(System.getProperty("user.home"), ".greader-tray.png");
         if (iconFile.exists()) {
             try { return ImageIO.read(iconFile); } catch (IOException ignored) {}
         }
-        // 首次生成并保存
-        BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        int S = 32;
+        BufferedImage img = new BufferedImage(S, S, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = img.createGraphics();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setColor(Color.BLACK); g2.fillOval(0, 0, 15, 15);
-        g2.setColor(Color.WHITE);
-        int cx = 7, cy = 7;
-        for (int i = 0; i < 5; i++) {
-            double a = Math.toRadians(i * 72 - 90);
-            int px = cx + (int)(3 * Math.cos(a));
-            int py = cy + (int)(3 * Math.sin(a));
-            g2.fillOval(px - 3, py - 4, 6, 8);
-        }
-        g2.fillOval(cx - 1, cy - 1, 3, 3);
+        // 白底
+        g2.setColor(Color.WHITE); g2.fillOval(1, 1, S-2, S-2);
+        // 递归画莲花花瓣
+        Color lotus = new Color(0x1A1A1A);
+        drawLotus(g2, S/2, S/2, 13, 8, 3, lotus);
         g2.dispose();
         try { ImageIO.write(img, "png", iconFile); } catch (IOException ignored) {}
         return img;
     }
 
+    private static void drawLotus(Graphics2D g, int cx, int cy, double r, int n, int depth, Color c) {
+        if (depth <= 0 || r < 1) return;
+        float alpha = (float) depth / 4;
+        g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), (int)(alpha * 255)));
+        for (int i = 0; i < n; i++) {
+            double a = Math.toRadians(i * 360.0 / n - 90);
+            int px = cx + (int)(r * 0.7 * Math.cos(a));
+            int py = cy + (int)(r * 0.7 * Math.sin(a));
+            int pw = (int)(r * 0.45), ph = (int)(r * 0.75);
+            // 倾斜的花瓣
+            AffineTransform old = g.getTransform();
+            g.translate(px, py);
+            g.rotate(a + Math.PI/2);
+            g.fillOval(-pw/2, -ph/2, pw, ph);
+            g.setTransform(old);
+        }
+        drawLotus(g, cx, cy, r * 0.55, n / 2 + 1, depth - 1, c);
+    }
+
     private void setupSystemTray() {
         if (!SystemTray.isSupported()) return;
         try {
-            trayIcon = new TrayIcon((BufferedImage) loadTrayImage(), "gReader");
+            Image icon = loadTrayImage();
+            trayIcon = new TrayIcon(icon, "gReader");
             PopupMenu menu = new PopupMenu();
             MenuItem showItem = new MenuItem("显示");
             showItem.addActionListener(e -> restoreFromTray());
