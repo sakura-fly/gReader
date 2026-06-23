@@ -32,6 +32,13 @@ public class TextPage extends JPanel {
     private int currentPage;       // 当前页码（从0开始）
     private int totalPages;        // 总页数
     private int bgAlpha = 255;     // 背景透明度 25~255
+    // 页面缓存：预加载当前页前后各一页，翻页时滑动窗口
+    private final java.util.Map<Integer, PageCache> pageCache = new java.util.LinkedHashMap<>(3, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<Integer, PageCache> e) {
+            return size() > 5; // 最多缓存5页
+        }
+    };
+    private record PageCache(int charStart, int charEnd, List<String> lines) {}
 
     /** 每页起始字符偏移量（在 fullText 中的位置），大小 = totalPages */
     private List<Integer> pageStarts = new ArrayList<>();
@@ -69,7 +76,35 @@ public class TextPage extends JPanel {
     /** 加载新文本，锚点重置到开头 */
     public void setText(String text) {
         this.fullText = text;
+        pageCache.clear();
         recalculatePages(0);
+    }
+
+    /** 预缓存一页的渲染结果 */
+    private void preCachePage(int page, int usableWidth, int maxLines, FontMetrics fm) {
+        if (pageCache.containsKey(page)) return;
+        int textLen = fullText.length();
+        int pos = pageStarts.get(page);
+        List<String> lines = new ArrayList<>();
+        int endPos = pos;
+        for (int line = 0; line < maxLines && pos < textLen; line++) {
+            if (fullText.charAt(pos) == '\n') { lines.add(""); pos++; continue; }
+            int ls = pos, lw = 0, lsp = -1, le = pos;
+            while (pos < textLen) {
+                char c = fullText.charAt(pos);
+                if (c == '\n') { le = pos; pos++; break; }
+                int cw = fm.charWidth(c);
+                if (lw + cw > usableWidth && lw > 0) {
+                    if (lsp >= 0) { le = lsp; pos = lsp + 1; } else le = pos;
+                    break;
+                }
+                lw += cw; if (c == ' ') lsp = pos; pos++;
+            }
+            if (pos >= textLen && le <= ls) le = textLen;
+            lines.add(fullText.substring(ls, le));
+            endPos = pos;
+        }
+        pageCache.put(page, new PageCache(pageStarts.get(page), endPos, lines));
     }
 
     public String getFullText() { return fullText; }
@@ -161,6 +196,7 @@ public class TextPage extends JPanel {
     private void recalculatePages(int anchorChar) {
         pageStarts.clear();
         lineStartChars.clear();
+        pageCache.clear();
 
         if (fullText == null || fullText.isEmpty()) {
             totalPages = 0;
@@ -339,35 +375,40 @@ public class TextPage extends JPanel {
         int maxLines = Math.max(1, (getHeight() - 2 * PADDING) / lineHeight);
         int textLen = fullText.length();
 
-        int pos = pageStarts.get(currentPage);
-        int lineY = PADDING + ascent;
-
-        for (int line = 0; line < maxLines && pos < textLen; line++) {
-            if (fullText.charAt(pos) == '\n') {
-                pos++;
-                lineY += lineHeight;
-                continue;
-            }
-
-            int lineStart = pos, lineWidth = 0, lastSpace = -1, lineEnd = pos;
-            while (pos < textLen) {
-                char c = fullText.charAt(pos);
-                if (c == '\n') { lineEnd = pos; pos++; break; }
-                int cw = fm.charWidth(c);
-                if (lineWidth + cw > usableWidth && lineWidth > 0) {
-                    if (lastSpace >= 0) { lineEnd = lastSpace; pos = lastSpace + 1; }
-                    else lineEnd = pos;
-                    break;
+        // 从缓存取当前页，无则渲染并缓存
+        int pageStart = pageStarts.get(currentPage);
+        PageCache cache = pageCache.get(currentPage);
+        if (cache == null || cache.charStart != pageStart) {
+            List<String> lines = new ArrayList<>();
+            int pos = pageStart, endPos = pos;
+            for (int line = 0; line < maxLines && pos < textLen; line++) {
+                if (fullText.charAt(pos) == '\n') { lines.add(""); pos++; continue; }
+                int ls = pos, lw = 0, lsp = -1, le = pos;
+                while (pos < textLen) {
+                    char c = fullText.charAt(pos);
+                    if (c == '\n') { le = pos; pos++; break; }
+                    int cw = fm.charWidth(c);
+                    if (lw + cw > usableWidth && lw > 0) {
+                        if (lsp >= 0) { le = lsp; pos = lsp + 1; } else le = pos;
+                        break;
+                    }
+                    lw += cw; if (c == ' ') lsp = pos; pos++;
                 }
-                lineWidth += cw;
-                if (c == ' ') lastSpace = pos;
-                pos++;
+                if (pos >= textLen && le <= ls) le = textLen;
+                lines.add(fullText.substring(ls, le));
+                endPos = pos;
             }
-            if (pos >= textLen && lineEnd <= lineStart) lineEnd = textLen;
+            cache = new PageCache(pageStart, endPos, lines);
+            pageCache.put(currentPage, cache);
+            // 预加载下一页
+            if (currentPage + 1 < totalPages) preCachePage(currentPage + 1, usableWidth, maxLines, fm);
+        }
 
-            g2d.drawString(fullText.substring(lineStart, lineEnd), PADDING, lineY);
+        // 绘制缓存的行
+        int lineY = PADDING + ascent;
+        for (String line : cache.lines) {
+            if (!line.isEmpty()) g2d.drawString(line, PADDING, lineY);
             lineY += lineHeight;
-            if (pos >= textLen) break;
         }
 
         // 页码指示器
