@@ -114,6 +114,8 @@ public class ReaderWindow extends JFrame {
 
         // 分页变化时（如缩放），自动刷新目录页码
         textPage.setOnPagesChanged(tocPanel::rebuildTOC);
+        // 翻页时同步目录焦点
+        textPage.setOnPageChanged(() -> tocPanel.syncToLine(textPage.getCurrentOriginalLine()));
 
         setupMenuBar();
         assembleLayout();

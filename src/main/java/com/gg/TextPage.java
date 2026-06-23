@@ -80,6 +80,7 @@ public class TextPage extends JPanel {
         if (currentPage < totalPages - 1) {
             currentPage++;
             repaint();
+            if (onPageChanged != null) onPageChanged.run();
         }
     }
 
@@ -87,6 +88,7 @@ public class TextPage extends JPanel {
         if (currentPage > 0) {
             currentPage--;
             repaint();
+            if (onPageChanged != null) onPageChanged.run();
         }
     }
 
@@ -245,6 +247,8 @@ public class TextPage extends JPanel {
 
     /** 分页变化回调，供外部（如目录面板）刷新数据 */
     private Runnable onPagesChanged;
+    /** 页面切换回调，供目录同步选中项 */
+    private Runnable onPageChanged;
 
     /** 取消待执行的缩放重算，防止启动时覆盖已恢复的进度 */
     public void cancelResizeTimer() {
@@ -254,12 +258,16 @@ public class TextPage extends JPanel {
     public void setOnPagesChanged(Runnable callback) {
         this.onPagesChanged = callback;
     }
+    public void setOnPageChanged(Runnable callback) {
+        this.onPageChanged = callback;
+    }
 
     /** 缩放触发的重算，使用当前页首字符作为锚点 */
     void recalculatePages() {
         int anchor = pageStarts.isEmpty() ? 0 : pageStarts.get(currentPage);
         recalculatePages(anchor);
         if (onPagesChanged != null) onPagesChanged.run();
+        if (onPageChanged != null) onPageChanged.run();
     }
 
     /**

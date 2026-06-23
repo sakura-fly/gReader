@@ -132,6 +132,21 @@ public class TOCPanel extends JPanel {
         return patterns;
     }
 
+    /** 浏览到新章节时同步目录选中项，不触发跳转 */
+    public void syncToLine(int currentLine) {
+        int sel = -1;
+        for (int i = 0; i < model.size(); i++) {
+            if (model.get(i).line() <= currentLine) sel = i;
+            else break;
+        }
+        if (sel >= 0) {
+            updatingSelection = true;
+            list.setSelectedIndex(sel);
+            list.ensureIndexIsVisible(sel);
+            updatingSelection = false;
+        }
+    }
+
     /** 当前行之后的下一个章节行号，无则返回 -1 */
     public int getNextChapterLine(int currentLine) {
         for (int i = 0; i < model.size(); i++) {
